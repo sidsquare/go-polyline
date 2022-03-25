@@ -7,9 +7,8 @@ import (
 	"testing"
 	"testing/quick"
 
+	"github.com/sidsquare/go-polyline"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/twpayne/go-polyline"
 )
 
 func TestUint(t *testing.T) {
@@ -99,10 +98,10 @@ func TestInt(t *testing.T) {
 		{i: -75000, s: "nnqC"},
 		{i: 255200, s: "_mqN"},
 		{i: -550300, s: "vxq`@"},
-		{i: math.MaxInt, s: "}~~~~~~~~~~~N"},
-		{i: math.MaxInt - 1, s: "{~~~~~~~~~~~N"},
-		{i: math.MinInt + 1, s: "|~~~~~~~~~~~N"},
-		{i: math.MinInt, s: "~~~~~~~~~~~~N"},
+		{i: math.MaxInt64, s: "}~~~~~~~~~~~N"},
+		{i: math.MaxInt64 - 1, s: "{~~~~~~~~~~~N"},
+		{i: math.MinInt64 + 1, s: "|~~~~~~~~~~~N"},
+		{i: math.MinInt64, s: "~~~~~~~~~~~~N"},
 	} {
 		got, b, err := polyline.DecodeInt([]byte(tc.s))
 		assert.NoError(t, err)

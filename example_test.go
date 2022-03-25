@@ -3,7 +3,7 @@ package polyline_test
 import (
 	"fmt"
 
-	"github.com/twpayne/go-polyline"
+	"github.com/sidsquare/go-polyline"
 )
 
 func ExampleEncodeCoords() {

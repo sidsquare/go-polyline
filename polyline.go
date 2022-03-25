@@ -90,8 +90,8 @@ func DecodeInt(buf []byte) (int, []byte, error) {
 		return 0, nil, err
 	case u&1 == 0:
 		return int(u >> 1), buf, nil
-	case u == math.MaxUint:
-		return math.MinInt, buf, nil
+	case u == math.MaxUint64:
+		return math.MinInt64, buf, nil
 	default:
 		return -int((u + 1) >> 1), buf, nil
 	}
@@ -203,6 +203,23 @@ func (c Codec) EncodeCoords(buf []byte, coords [][]float64) []byte {
 			buf = EncodeInt(buf, ex-last[i])
 			last[i] = ex
 		}
+	}
+	return buf
+}
+
+// EncodeCoords appends the encoding of an array of coordinates coords to buf
+// and returns the new buf.
+func (c Codec) EncodePoints(buf []byte, points []Point) []byte {
+	simplifiedPoints := Simplify(&points, 2, false)
+	last := make([]int, c.Dim)
+	for _, point := range simplifiedPoints {
+		ex := round(c.Scale * point.GetX())
+		buf = EncodeInt(buf, ex-last[0])
+		last[0] = ex
+
+		ex = round(c.Scale * point.GetY())
+		buf = EncodeInt(buf, ex-last[1])
+		last[1] = ex
 	}
 	return buf
 }

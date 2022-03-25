@@ -1,9 +1,4 @@
 # go-polyline
-
-[![Build Status](https://github.com/twpayne/go-polyline/workflows/Test/badge.svg)](https://github.com/twpayne/go-polyline/actions?query=workflow%3ATest)
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/twpayne/go-polyline)](https://pkg.go.dev/github.com/twpayne/go-polyline)
-[![Coverage Status](https://coveralls.io/repos/github/twpayne/go-polyline/badge.svg)](https://coveralls.io/github/twpayne/go-polyline)
-
 Package `polyline` implements a Google Maps Encoding Polyline encoder and decoder.
 
 ## Encoding example
