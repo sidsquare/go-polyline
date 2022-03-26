@@ -44,9 +44,9 @@ type Codec struct {
 
 var defaultCodec = Codec{Dim: 2, Scale: 1e5}
 
-// DecodeUint decodes a single unsigned integer from buf. It returns the decoded
+// decodeUint decodes a single unsigned integer from buf. It returns the decoded
 // uint, the remaining unconsumed bytes of buf, and any error.
-func DecodeUint(buf []byte) (uint, []byte, error) {
+func decodeUint(buf []byte) (uint, []byte, error) {
 	if len(buf) == 0 {
 		return 0, nil, ErrEmpty
 	}
@@ -82,10 +82,10 @@ func DecodeUint(buf []byte) (uint, []byte, error) {
 	}
 }
 
-// DecodeInt decodes a single signed integer from buf. It returns the decoded
+// decodeInt decodes a single signed integer from buf. It returns the decoded
 // int, the remaining unconsumed bytes of buf, and any error.
-func DecodeInt(buf []byte) (int, []byte, error) {
-	switch u, buf, err := DecodeUint(buf); {
+func decodeInt(buf []byte) (int, []byte, error) {
+	switch u, buf, err := decodeUint(buf); {
 	case err != nil:
 		return 0, nil, err
 	case u&1 == 0:
@@ -97,9 +97,9 @@ func DecodeInt(buf []byte) (int, []byte, error) {
 	}
 }
 
-// EncodeUint appends the encoding of a single unsigned integer u to buf and
+// encodeUint appends the encoding of a single unsigned integer u to buf and
 // returns the new buf.
-func EncodeUint(buf []byte, u uint) []byte {
+func encodeUint(buf []byte, u uint) []byte {
 	for u >= 32 {
 		buf = append(buf, byte((u&31)+95))
 		u >>= 5
@@ -108,26 +108,26 @@ func EncodeUint(buf []byte, u uint) []byte {
 	return buf
 }
 
-// EncodeInt appends the encoding of a single signed integer i to buf and
+// encodeInt appends the encoding of a single signed integer i to buf and
 // returns the new buf.
-func EncodeInt(buf []byte, i int) []byte {
+func encodeInt(buf []byte, i int) []byte {
 	var u uint
 	if i < 0 {
 		u = uint(^(i << 1))
 	} else {
 		u = uint(i << 1)
 	}
-	return EncodeUint(buf, u)
+	return encodeUint(buf, u)
 }
 
-// DecodeCoord decodes a single coordinate from buf. It returns the coordinate,
+// decodeCoord decodes a single coordinate from buf. It returns the coordinate,
 // the remaining unconsumed bytes of buf, and any error.
-func (c Codec) DecodeCoord(buf []byte) ([]float64, []byte, error) {
+func (c Codec) decodeCoord(buf []byte) ([]float64, []byte, error) {
 	coord := make([]float64, c.Dim)
 	for i := range coord {
 		var err error
 		var j int
-		j, buf, err = DecodeInt(buf)
+		j, buf, err = decodeInt(buf)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -136,21 +136,55 @@ func (c Codec) DecodeCoord(buf []byte) ([]float64, []byte, error) {
 	return coord, buf, nil
 }
 
-// DecodeCoords decodes an array of coordinates from buf. It returns the
+// encodeCoord encodes a single coordinate to buf and returns the new buf.
+func (c Codec) encodeCoord(buf []byte, coord []float64) []byte {
+	for _, x := range coord {
+		buf = encodeInt(buf, round(c.Scale*x))
+	}
+	return buf
+}
+
+// decodeCoord decodes a single coordinate from buf using the default codec. It
+// returns the coordinate, the remaining bytes in buf, and any error.
+func decodeCoord(buf []byte) ([]float64, []byte, error) {
+	return defaultCodec.decodeCoord(buf)
+}
+
+// EncodePoints simplifies and generate an encoded polyline from the given points
+// Tolerance is a float from 0.1->5.0 (higher signifies more lossy compression)
+// UseHighQuality excludes distance-based preprocessing step which leads to highest quality simplification but runs ~10-20 times slower.
+func (c Codec) EncodePoints(points []Point, tolerance float64, useHighQuality bool) []byte {
+	simplifiedPoints := Simplify(&points, tolerance, useHighQuality)
+	buf := make([]byte, 0)
+	last := make([]int, c.Dim)
+	for _, point := range simplifiedPoints {
+		ex := round(c.Scale * point.GetX())
+		buf = encodeInt(buf, ex-last[0])
+		last[0] = ex
+
+		ex = round(c.Scale * point.GetY())
+		buf = encodeInt(buf, ex-last[1])
+		last[1] = ex
+	}
+	return buf
+}
+
+// DecodePolyLine decodes an array of coordinates from buf. It returns the
 // coordinates, the remaining unconsumed bytes of buf, and any error.
-func (c Codec) DecodeCoords(buf []byte) ([][]float64, []byte, error) {
+func (c Codec) DecodePolyLine(str string) ([][]float64, []byte, error) {
+	buf := []byte(str)
 	if len(buf) == 0 {
 		return nil, buf, nil
 	}
 	var coord []float64
 	var err error
-	coord, buf, err = c.DecodeCoord(buf)
+	coord, buf, err = c.decodeCoord(buf)
 	if err != nil {
 		return nil, nil, err
 	}
 	coords := [][]float64{coord}
 	for i := 1; len(buf) > 0; i++ {
-		coord, buf, err = c.DecodeCoord(buf)
+		coord, buf, err = c.decodeCoord(buf)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -160,106 +194,4 @@ func (c Codec) DecodeCoords(buf []byte) ([][]float64, []byte, error) {
 		coords = append(coords, coord)
 	}
 	return coords, nil, nil
-}
-
-// DecodeFlatCoords decodes coordinates from buf, appending them to a
-// one-dimensional array. It returns the coordinates, the remaining unconsumed
-// bytes in buf, and any error.
-func (c Codec) DecodeFlatCoords(flatCoords []float64, buf []byte) ([]float64, []byte, error) {
-	if len(flatCoords)%c.Dim != 0 {
-		return nil, nil, ErrDimensionalMismatch
-	}
-	last := make([]int, c.Dim)
-	for len(buf) > 0 {
-		for j := 0; j < c.Dim; j++ {
-			var err error
-			var k int
-			k, buf, err = DecodeInt(buf)
-			if err != nil {
-				return nil, nil, err
-			}
-			last[j] += k
-			flatCoords = append(flatCoords, float64(last[j])/c.Scale)
-		}
-	}
-	return flatCoords, nil, nil
-}
-
-// EncodeCoord encodes a single coordinate to buf and returns the new buf.
-func (c Codec) EncodeCoord(buf []byte, coord []float64) []byte {
-	for _, x := range coord {
-		buf = EncodeInt(buf, round(c.Scale*x))
-	}
-	return buf
-}
-
-// EncodeCoords appends the encoding of an array of coordinates coords to buf
-// and returns the new buf.
-func (c Codec) EncodeCoords(buf []byte, coords [][]float64) []byte {
-	last := make([]int, c.Dim)
-	for _, coord := range coords {
-		for i, x := range coord {
-			ex := round(c.Scale * x)
-			buf = EncodeInt(buf, ex-last[i])
-			last[i] = ex
-		}
-	}
-	return buf
-}
-
-// EncodeCoords appends the encoding of an array of coordinates coords to buf
-// and returns the new buf.
-func (c Codec) EncodePoints(buf []byte, points []Point) []byte {
-	simplifiedPoints := Simplify(&points, 2, false)
-	last := make([]int, c.Dim)
-	for _, point := range simplifiedPoints {
-		ex := round(c.Scale * point.GetX())
-		buf = EncodeInt(buf, ex-last[0])
-		last[0] = ex
-
-		ex = round(c.Scale * point.GetY())
-		buf = EncodeInt(buf, ex-last[1])
-		last[1] = ex
-	}
-	return buf
-}
-
-// EncodeFlatCoords encodes a one-dimensional array of coordinates to buf. It
-// returns the new buf and any error.
-func (c Codec) EncodeFlatCoords(buf []byte, flatCoords []float64) ([]byte, error) {
-	if len(flatCoords)%c.Dim != 0 {
-		return nil, ErrDimensionalMismatch
-	}
-	last := make([]int, c.Dim)
-	for i, x := range flatCoords {
-		ex := round(c.Scale * x)
-		j := i % c.Dim
-		buf = EncodeInt(buf, ex-last[j])
-		last[j] = ex
-	}
-	return buf, nil
-}
-
-// DecodeCoord decodes a single coordinate from buf using the default codec. It
-// returns the coordinate, the remaining bytes in buf, and any error.
-func DecodeCoord(buf []byte) ([]float64, []byte, error) {
-	return defaultCodec.DecodeCoord(buf)
-}
-
-// DecodeCoords decodes an array of coordinates from buf using the default
-// codec. It returns the coordinates, the remaining bytes in buf, and any error.
-func DecodeCoords(buf []byte) ([][]float64, []byte, error) {
-	return defaultCodec.DecodeCoords(buf)
-}
-
-// EncodeCoord returns the encoding of an array of coordinates using the default
-// codec.
-func EncodeCoord(coord []float64) []byte {
-	return defaultCodec.EncodeCoord(nil, coord)
-}
-
-// EncodeCoords returns the encoding of an array of coordinates using the
-// default codec.
-func EncodeCoords(coords [][]float64) []byte {
-	return defaultCodec.EncodeCoords(nil, coords)
 }
